@@ -3,9 +3,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 def get_db_connection():
-    # Параметры подключения из переменных окружения для Render
     conn = psycopg2.connect(
-        dbname=os.getenv("PGDATABASE", "love_alarm_db"),  # Значение по умолчанию для локальной разработки
+        dbname=os.getenv("PGDATABASE", "love_alarm_db"),  
         user=os.getenv("PGUSER", "postgres"),
         password=os.getenv("PGPASSWORD", "3e0o7432a46b"),
         host=os.getenv("PGHOST", "localhost"),
