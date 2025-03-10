@@ -15,3 +15,7 @@ class UserInteraction(BaseModel):
     user_id: int
     target_id: int
     interaction_type: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
