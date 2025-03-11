@@ -12,12 +12,13 @@ router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Настройки для хэширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 R = 6371000  # Радиус Земли в метрах
 
-
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Вычисляет расстояние между двумя точками в метрах."""
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
     dlon = lon2 - lon1
@@ -27,19 +28,15 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     print(f"Distance: {distance} meters")
     return distance
 
-
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-
 @router.get("/")
 async def root():
     return {"message": "Love Alarm API v1 is running!"}
-
 
 @router.post("/users/")
 async def create_user(user: User):
@@ -48,9 +45,9 @@ async def create_user(user: User):
     try:
         hashed_password = hash_password(user.password)  # Хэшируем пароль
         cur.execute(
-            "INSERT INTO users (username, name, surname, email, password_hash, profile_photo, latitude, longitude) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (user.username, user.name, user.surname, user.email, hashed_password, user.profile_photo, user.latitude,
-             user.longitude)
+            "INSERT INTO users (username, name, surname, email, password_hash, profile_photo, latitude, longitude) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            (user.username, user.name, user.surname, user.email, hashed_password, user.profile_photo, user.latitude, user.longitude)
         )
         user_id = cur.fetchone()["id"]
         conn.commit()
@@ -62,13 +59,11 @@ async def create_user(user: User):
         conn.close()
     return {"message": "User created", "user_id": user_id}
 
-
 @router.post("/login/")
 async def login_user(login: UserLogin):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Получаем пользователя по username
         cur.execute(
             "SELECT id, password_hash FROM users WHERE username = %s",
             (login.username,)
@@ -80,7 +75,6 @@ async def login_user(login: UserLogin):
     finally:
         cur.close()
         conn.close()
-
 
 @router.post("/users/{user_id}/photo/")
 async def upload_photo(user_id: int, file: UploadFile = File(...)):
@@ -94,12 +88,13 @@ async def upload_photo(user_id: int, file: UploadFile = File(...)):
             "UPDATE users SET profile_photo = %s WHERE id = %s",
             (file_path, user_id)
         )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
         conn.commit()
     finally:
         cur.close()
         conn.close()
     return {"message": "Photo uploaded", "file_path": file_path}
-
 
 @router.put("/users/{user_id}/location/")
 async def update_location(user_id: int, latitude: float, longitude: float):
@@ -119,7 +114,6 @@ async def update_location(user_id: int, latitude: float, longitude: float):
         conn.close()
     return {"message": "Location updated", "user_id": user_id, "latitude": latitude, "longitude": longitude}
 
-
 @router.post("/interactions/")
 async def create_interaction(interaction: UserInteraction):
     conn = get_db_connection()
@@ -131,11 +125,13 @@ async def create_interaction(interaction: UserInteraction):
         )
         interaction_id = cur.fetchone()["id"]
         conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Interaction creation failed: {str(e)}")
     finally:
         cur.close()
         conn.close()
     return {"message": "Interaction saved", "interaction_id": interaction_id}
-
 
 @router.get("/check-love/{user_id}")
 async def check_love(user_id: int):
