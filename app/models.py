@@ -19,3 +19,18 @@ class UserInteraction(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+
+class UserInfo(BaseModel):
+    username: str
+    name: str
+    surname: str
+    email: str
+    profile_photo: str | None
+
+
+class Location(BaseModel):
+    latitude: float
+    longitude: float
+
+class LikeRequest(BaseModel):
+    target_user_id: int

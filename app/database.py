@@ -46,6 +46,21 @@ def init_db():
         );
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS likes (
+            id SERIAL PRIMARY KEY,
+            from_user_id INT REFERENCES users(id),
+            to_user_id INT REFERENCES users(id),
+            UNIQUE (from_user_id, to_user_id)
+        );
+    """)
+
+    # Добавим поле signal_active, если его нет
+    cur.execute("""
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS signal_active BOOLEAN DEFAULT FALSE;
+    """)
+
     conn.commit()
     cur.close()
     conn.close()
