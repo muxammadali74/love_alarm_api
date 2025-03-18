@@ -1,19 +1,21 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
+from fastapi.staticfiles import StaticFiles
 from passlib.context import CryptContext
 from app.models import User, UserInteraction, UserLogin, UserInfo, Location, LikeRequest
 from app.database import get_db_connection
-
 import os
 import shutil
 from math import radians, sin, cos, sqrt, atan2
 
-
 router = APIRouter()
 
-
-UPLOAD_DIR = r'D:/Myprojects/Python/Lalarm/uploads'  # Временно для проверки
+# Путь для Render Disk
+UPLOAD_DIR = "/app/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Монтируем папку для статических файлов (доступ через /uploads/)
+app = FastAPI()
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -27,11 +29,9 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * atan2(sqrt(a), sqrt(1-a))
     return R * c
 
-
 @router.get("/")
 async def root():
     return {"message": "Love Alarm API v1 is running!"}
-
 
 @router.post("/users/{user_id}/activate-signal/")
 async def activate_signal(user_id: int, location: Location):
@@ -86,6 +86,45 @@ async def deactivate_signal(user_id: int):
         cur.close()
         conn.close()
 
+@router.get("/users/{user_id}/signal-status/")
+async def get_signal_status(user_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT signal_active, latitude, longitude FROM users WHERE id = %s",
+            (user_id,)
+        )
+        user_data = cur.fetchone()
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        is_active = user_data["signal_active"]
+        nearby_list = []
+        if is_active:
+            cur.execute(
+                "SELECT id, profile_photo, latitude, longitude FROM users WHERE signal_active = TRUE AND id != %s",
+                (user_id,)
+            )
+            nearby_users = cur.fetchall()
+            user_lat = user_data["latitude"]
+            user_lon = user_data["longitude"]
+            for user in nearby_users:
+                distance = haversine(user_lat, user_lon, user['latitude'], user['longitude'])
+                if distance <= 1:  # Радиус 1 км
+                    nearby_list.append({
+                        "id": user['id'],
+                        "profile_photo": user['profile_photo']
+                    })
+        
+        return {
+            "is_active": is_active,
+            "nearby_users": nearby_list
+        }
+    finally:
+        cur.close()
+        conn.close()
+
 @router.post("/users/{user_id}/send-like/")
 async def send_like(user_id: int, like: LikeRequest):
     conn = get_db_connection()
@@ -101,21 +140,18 @@ async def send_like(user_id: int, like: LikeRequest):
         cur.close()
         conn.close()
 
-
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-
-
 @router.post("/users/")
 async def create_user(user: User):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        hashed_password = hash_password(user.password)  # Хэшируем пароль
+        hashed_password = hash_password(user.password)
         cur.execute(
             "INSERT INTO users (username, name, surname, email, password_hash, profile_photo, latitude, longitude) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
@@ -123,13 +159,13 @@ async def create_user(user: User):
         )
         user_id = cur.fetchone()["id"]
         conn.commit()
+        return {"message": "User created", "user_id": user_id}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=400, detail=f"User creation failed: {str(e)}")
     finally:
         cur.close()
         conn.close()
-    return {"message": "User created", "user_id": user_id}
 
 @router.post("/login/")
 async def login_user(login: UserLogin):
@@ -143,11 +179,10 @@ async def login_user(login: UserLogin):
         user = cur.fetchone()
         if not user or not verify_password(login.password, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Invalid username or password")
-        return {"message": "Login successful", "user_id": user["id"]}
+        return {"message": "(Login successful", "id": user["id"]}  # Совместимо с ApiClient
     finally:
         cur.close()
         conn.close()
-
 
 @router.get("/users/{user_id}/", response_model=UserInfo)
 async def get_user_info(user_id: int):
@@ -155,13 +190,14 @@ async def get_user_info(user_id: int):
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT username, name, surname, email, profile_photo FROM users WHERE id = %s",
+            "SELECT id, username, name, surname, email, profile_photo FROM users WHERE id = %s",
             (user_id,)
         )
         user_data = cur.fetchone()
         if user_data is None:
             raise HTTPException(status_code=404, detail="User not found")
         return {
+            "id": user_data['id'],
             "username": user_data['username'],
             "name": user_data["name"],
             "surname": user_data["surname"],
@@ -175,7 +211,6 @@ async def get_user_info(user_id: int):
         cur.close()
         conn.close()
 
-
 @router.post("/users/{user_id}/photo/")
 async def upload_photo(user_id: int, file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_DIR, f"{user_id}_{file.filename}")
@@ -184,19 +219,18 @@ async def upload_photo(user_id: int, file: UploadFile = File(...)):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        photo_url = f"http://127.0.0.1:8000/uploads/{user_id}_{file.filename}"
+        photo_url = f"/uploads/{user_id}_{file.filename}"  # Относительный путь для Render
         cur.execute(
             "UPDATE users SET profile_photo = %s WHERE id = %s",
-            (photo_url, user_id)  # Сохраняем URL
+            (photo_url, user_id)
         )
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")
         conn.commit()
+        return {"message": "Photo uploaded", "file_path": photo_url}
     finally:
         cur.close()
         conn.close()
-    return {"message": "Photo uploaded", "file_path": photo_url}
-
 
 @router.put("/users/{user_id}/location/")
 async def update_location(user_id: int, latitude: float, longitude: float):
@@ -257,10 +291,8 @@ async def check_love(user_id: int):
             cur.execute("SELECT latitude, longitude FROM users WHERE id = %s", (liker_id,))
             liker_data = cur.fetchone()
             if liker_data and liker_data["latitude"] is not None:
-                distance = haversine_distance(
-                    user_lat, user_lon, liker_data["latitude"], liker_data["longitude"]
-                )
-                if distance <= 100:
+                distance = haversine(user_lat, user_lon, liker_data["latitude"], liker_data["longitude"])
+                if distance <= 0.1:  # 100 метров
                     love_count += 1
     finally:
         cur.close()
