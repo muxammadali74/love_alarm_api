@@ -14,8 +14,6 @@ UPLOAD_DIR = "/app/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Монтируем папку для статических файлов (доступ через /uploads/)
-app = FastAPI()
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
