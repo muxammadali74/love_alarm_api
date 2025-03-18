@@ -41,18 +41,20 @@ async def activate_signal(user_id: int, location: Location):
             "SELECT id, profile_photo, latitude, longitude FROM users WHERE signal_active = TRUE AND id != %s",
             (user_id,)
         )
+        
         nearby_users = cur.fetchall()
         nearby_list = []
         user_lat = location.latitude
         user_lon = location.longitude
         
         for user in nearby_users:
-            distance = haversine(user_lat, user_lon, user['latitude'], user['longitude'])
-            if distance <= 1:
-                nearby_list.append({
-                    "id": user['id'],
-                    "profile_photo": user['profile_photo']
-                })
+            if user["id"] != user_id:
+                distance = haversine(user_lat, user_lon, user['latitude'], user['longitude'])
+                if distance <= 1:
+                    nearby_list.append({
+                        "id": user['id'],
+                        "profile_photo": user['profile_photo']
+                    })
         
         conn.commit()
         return {"message": "Signal activated", "nearby_users": nearby_list}
