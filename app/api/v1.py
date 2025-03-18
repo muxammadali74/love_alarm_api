@@ -9,12 +9,6 @@ from math import radians, sin, cos, sqrt, atan2
 
 router = APIRouter()
 
-# Путь для Render Disk
-UPLOAD_DIR = "/app/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# Монтируем папку для статических файлов (доступ через /uploads/)
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 R = 6371000  # Радиус Земли в метрах
@@ -43,7 +37,6 @@ async def activate_signal(user_id: int, location: Location):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Ищем пользователей поблизости (радиус 1 км)
         cur.execute(
             "SELECT id, profile_photo, latitude, longitude FROM users WHERE signal_active = TRUE AND id != %s",
             (user_id,)
@@ -55,7 +48,7 @@ async def activate_signal(user_id: int, location: Location):
         
         for user in nearby_users:
             distance = haversine(user_lat, user_lon, user['latitude'], user['longitude'])
-            if distance <= 1:  # Радиус 1 км
+            if distance <= 1:
                 nearby_list.append({
                     "id": user['id'],
                     "profile_photo": user['profile_photo']
@@ -109,7 +102,7 @@ async def get_signal_status(user_id: int):
             user_lon = user_data["longitude"]
             for user in nearby_users:
                 distance = haversine(user_lat, user_lon, user['latitude'], user['longitude'])
-                if distance <= 1:  # Радиус 1 км
+                if distance <= 1:
                     nearby_list.append({
                         "id": user['id'],
                         "profile_photo": user['profile_photo']
@@ -177,7 +170,7 @@ async def login_user(login: UserLogin):
         user = cur.fetchone()
         if not user or not verify_password(login.password, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Invalid username or password")
-        return {"message": "(Login successful", "id": user["id"]}  # Совместимо с ApiClient
+        return {"message": "Login successful", "id": user["id"]}
     finally:
         cur.close()
         conn.close()
@@ -217,7 +210,7 @@ async def upload_photo(user_id: int, file: UploadFile = File(...)):
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        photo_url = f"/uploads/{user_id}_{file.filename}"  # Относительный путь для Render
+        photo_url = f"/uploads/{user_id}_{file.filename}"
         cur.execute(
             "UPDATE users SET profile_photo = %s WHERE id = %s",
             (photo_url, user_id)
@@ -290,7 +283,7 @@ async def check_love(user_id: int):
             liker_data = cur.fetchone()
             if liker_data and liker_data["latitude"] is not None:
                 distance = haversine(user_lat, user_lon, liker_data["latitude"], liker_data["longitude"])
-                if distance <= 0.1:  # 100 метров
+                if distance <= 0.1:
                     love_count += 1
     finally:
         cur.close()
