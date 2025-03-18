@@ -104,7 +104,7 @@ async def get_signal_status(user_id: int):
             user_lon = user_data["longitude"]
             for user in nearby_users:
                 distance = haversine(user_lat, user_lon, user['latitude'], user['longitude'])
-                if distance <= 1:
+                if distance <= 1 and user['id'] != user_id:
                     nearby_list.append({
                         "id": user['id'],
                         "profile_photo": user['profile_photo']
